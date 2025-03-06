@@ -13,6 +13,7 @@ from flcore.servers.serverper import FedPer
 from utils.result_utils import average_data
 from utils.mem_utils import MemReporter
 from flcore.trainmodel.models import *
+from Environment.Environment import Environment  # Add this import
 
 logger = logging.getLogger()
 logger.setLevel(logging.ERROR)
@@ -28,6 +29,9 @@ def run(args):
     M= args.client_num
     K= args.num_terminals
     tau_p= args.pilot_num
+    if mimo== "True":
+        env = Environment(M=args.num_clients, K=args.num_terminals, tau=args.pilot_num)  # Initialize Environment with num_clients as M
+        BETAA = env.compute_large_scale_fading()  # Generate data using Environment
     for i in range(args.prev, args.times):
         print(f"\n======= Running time: {i} =======")
         print("Creating server and clients")
@@ -149,9 +153,9 @@ if __name__ == "__main__":
     parser.add_argument('-tth', "--time_threthold", type=float, default=10000,
                         help="The threthold for droping slow clients")
     parser.add_argument('-kUe', "--num_terminals", type=int, default=40, help="Number of terminals (K)")
-    parser.add_argument('-mAp', "--num_aps", type=int, default=100, help="Number of APs (M)")
     parser.add_argument('-mm', "--massive_mimo", type=bool, default=False,
                         help="Run in massive MIMO scenario")
+    parser.add_argument('-pn', "--pilot_num", type=int, default=20, help="Number of pilots (tau)")  # Add this argument
     args = parser.parse_args()
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
