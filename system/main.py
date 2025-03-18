@@ -7,13 +7,14 @@ import warnings
 import numpy as np
 import torchvision
 import logging
+import sys
 
 from flcore.servers.serveravg import FedAvg
 from flcore.servers.serverper import FedPer
 from utils.result_utils import average_data
 from utils.mem_utils import MemReporter
 from flcore.trainmodel.models import *
-from Environment.Environment import Environment  # Add this import
+#from Environment.Environment import Environment  # Add this import
 
 logger = logging.getLogger()
 logger.setLevel(logging.ERROR)
@@ -25,13 +26,14 @@ def run(args):
     time_list = []
     reporter= MemReporter()
     model_str= args.model
+    args.model_name= str(copy.deepcopy(args.model))
     mimo= args.massive_mimo
-    M= args.client_num
+    M= args.num_clients
     K= args.num_terminals
     tau_p= args.pilot_num
-    if mimo== "True":
-        env = Environment(M=args.num_clients, K=args.num_terminals, tau=args.pilot_num)  # Initialize Environment with num_clients as M
-        BETAA = env.compute_large_scale_fading()  # Generate data using Environment
+    #if mimo== "True":
+        #env = Environment(M=args.num_clients, K=args.num_terminals, tau=args.pilot_num)  # Initialize Environment with num_clients as M
+       # BETAA = env.compute_large_scale_fading()  # Generate data using Environment
     for i in range(args.prev, args.times):
         print(f"\n======= Running time: {i} =======")
         print("Creating server and clients")
@@ -40,18 +42,24 @@ def run(args):
             if mimo == "True":
                 args.model = CNNModel(M, K, tau_p).to(args.device)
             else:
-                if "MNIST" in args.dataset:
-                    args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
-                elif "Cifar10" in args.dataset:
-                    args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
+                if "MNIST" or "EMNIST" or "FashionMNIST" in args.dataset:
+                    args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes).to(args.device)
+                elif "Cifar10" or "Cifar100" in args.dataset:
+                    args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes).to(args.device)
+                elif  "TinyImagenet" in args.dataset:
+                    return FedAvgCNN(in_features=3, num_classes=args.num_classes).to(args.device)
+                else:
+                    args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes).to(args.device)
         elif model_str == "MLP":
             if mimo == "True":
                 args.model = MLPModel(M, K, tau_p,n_qubits).to(args.device)
             else:
-                if "MNIST" in args.dataset:
-                    args.model = FedAvgMLP( num_classes=args.num_classes, dim=1024).to(args.device)
-                elif "Cifar10" in args.dataset:
-                    args.model = FedAvgMLP( num_classes=args.num_classes, dim=1600).to(args.device)
+                if "MNIST" or "EMNIST" or "FashionMNIST" in args.dataset:
+                    args.model = FedAvgMLP( in_features= 784,num_classes=args.num_classes).to(args.device)
+                elif "Cifar10" or "Cifar100" in args.dataset:
+                    args.model = FedAvgMLP(in_features= 3072 ,num_classes=args.num_classes).to(args.device)
+                elif "TinyImagenet" in args.dataset: 
+                    args.model = FedAvgMLP(in_features= 12288 ,num_classes=args.num_classes).to(args.device)
         elif model_str == "HQCNN":
             weight_shapes = {
                     "weights_0": 3,
@@ -86,14 +94,14 @@ def run(args):
             raise Exception("Algorithm not found")
         
         # Debug: Check data consistency
-        for client in server.clients:
-            print(f"Client {client.id} - Number of samples: {len(client.train_data)}")
+        # for client in server.clients:
+        #     print(f"Client {client.id} - Number of samples: {len(client.train_data)}")
         
         server.train()
         time_list.append(time.time()-start)
     print(f"\nAvergae time cost:{ round(np.average(time_list), 2)}s.")
     
-    average_data(dataset= args.dataset, algorithm= args.algorithm, goal= args.goal, times= args.times)
+    average_data(dataset= args.dataset, algorithm= args.algorithm,model_name= args.model_name,times= args.times)
     print("done")
     reporter.report()
 if __name__ == "__main__":
@@ -107,6 +115,7 @@ if __name__ == "__main__":
     parser.add_argument('-data', "--dataset", type=str, default="MNIST")
     parser.add_argument('-ncl', "--num_classes", type=int, default=10)
     parser.add_argument('-m', "--model", type=str, default="CNN")
+    parser.add_argument('-m_name', "--model_name", type=str, default="CNN")
     parser.add_argument('-lbs', "--batch_size", type=int, default=10)
     parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.005,
                         help="Local learning rate")

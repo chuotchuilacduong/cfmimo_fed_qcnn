@@ -19,6 +19,7 @@ class Client(object):
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
         torch.manual_seed(0)
         self.model = copy.deepcopy(args.model)
+        self.model_name= args.model_name
         self.algorithm = args.algorithm
         self.dataset = args.dataset
         self.device = args.device
@@ -162,6 +163,40 @@ class Client(object):
     #     return x, y
 
 
+    def save_client_model(self):
+        model_path = os.path.join("models", self.dataset,self.model_name)
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+
+        # Tạo tên file chứa thông tin client, thuật toán, model và dataset
+        model_filename = f"{self.algorithm}_{self.model.__class__.__name__}_{self.dataset}_client_{self.id}.pt"
+        model_path = os.path.join(model_path, model_filename)
+
+        # Kiểm tra xem model có Quantum Layer không
+        if hasattr(self.model, "quantum_layer"):
+            #print(f"🔹 Lưu model {model_filename} dưới dạng state_dict() do có quantum_layer.")
+            torch.save(self.model.state_dict(), model_path)
+        else:
+            #print(f"🔹 Lưu toàn bộ model {model_filename}.")
+            torch.save(self.model, model_path)
+
+
+    def load_client_model(self):
+        model_path = os.path.join("models", self.dataset,self.model_name )
+
+        # Xác định tên file theo định dạng đã lưu
+        model_filename = f"{self.algorithm}_{self.model.__class__.__name__}_{self.dataset}_client_{self.id}.pt"
+        model_path = os.path.join(model_path, model_filename)
+
+        assert os.path.exists(model_path), f"⚠️ Model file {model_filename} không tồn tại!"
+
+        # Kiểm tra xem model có Quantum Layer không
+        if hasattr(self.model, "quantum_layer"):
+            print(f"🔹 Tải model {model_filename} từ state_dict().")
+            self.model.load_state_dict(torch.load(model_path))
+        else:
+            print(f"🔹 Tải toàn bộ model {model_filename}.")
+            self.model = torch.load(model_path)
     def save_item(self, item, item_name, item_path=None):
         if item_path == None:
             item_path = self.save_folder_name

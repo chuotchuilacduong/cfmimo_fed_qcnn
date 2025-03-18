@@ -22,6 +22,7 @@ class Server(object):
         self.batch_size = args.batch_size
         self.learning_rate = args.local_learning_rate
         self.global_model = copy.deepcopy(args.model)
+        self.model_name= args.model_name
         self.num_clients = args.num_clients
         self.join_ratio = args.join_ratio
         self.random_join_ratio = args.random_join_ratio
@@ -149,18 +150,39 @@ class Server(object):
         for server_param, client_param in zip(self.global_model.parameters(), client_model.parameters()):
             server_param.data += client_param.data.clone() * w
 
-    def save_global_model(self):
+    def save_global_model(self): 
         model_path = os.path.join("models", self.dataset)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
-        model_path = os.path.join(model_path, self.algorithm + "_server" + ".pt")
-        torch.save(self.global_model, model_path)
+
+        # Tạo tên file chứa thông tin thuật toán, model và dataset
+        model_filename = f"{self.algorithm}_{self.global_model.__class__.__name__}_{self.dataset}_server.pt"
+        model_path = os.path.join(model_path, model_filename)
+
+        # Kiểm tra xem model có Quantum Layer không
+        if hasattr(self.global_model, "quantum_layer"):
+            print(f"🔹 Lưu model {model_filename} dưới dạng state_dict() do có quantum_layer.")
+            torch.save(self.global_model.state_dict(), model_path)
+        else:
+            print(f"🔹 Lưu toàn bộ model {model_filename}.")
+            torch.save(self.global_model, model_path)
 
     def load_model(self):
         model_path = os.path.join("models", self.dataset)
-        model_path = os.path.join(model_path, self.algorithm + "_server" + ".pt")
-        assert (os.path.exists(model_path))
-        self.global_model = torch.load(model_path)
+        
+        # Xác định tên file theo định dạng đã lưu
+        model_filename = f"{self.algorithm}_{self.global_model.__class__.__name__}_{self.dataset}_server.pt"
+        model_path = os.path.join(model_path, model_filename)
+
+        assert os.path.exists(model_path), f"⚠️ Model file {model_filename} không tồn tại!"
+
+        # Kiểm tra xem model có Quantum Layer không
+        if hasattr(self.global_model, "quantum_layer"):
+            print(f"🔹 Tải model {model_filename} từ state_dict().")
+            self.global_model.load_state_dict(torch.load(model_path))
+        else:
+            print(f"🔹 Tải toàn bộ model {model_filename}.")
+            self.global_model = torch.load(model_path)
 
     def model_exists(self):
         model_path = os.path.join("models", self.dataset)
@@ -168,20 +190,32 @@ class Server(object):
         return os.path.exists(model_path)
         
     def save_results(self):
-        algo = self.dataset + "_" + self.algorithm
+        algo = f"{self.dataset}_{self.algorithm}_{self.model_name}"  # Thêm tên model vào
         result_path = "../results/"
+        
         if not os.path.exists(result_path):
             os.makedirs(result_path)
 
-        if (len(self.rs_test_acc)):
+        if len(self.rs_test_acc):
             algo = algo + "_" + self.goal + "_" + str(self.times)
-            file_path = result_path + "{}.h5".format(algo)
+            file_name = "{}.h5".format(algo)
+            file_path = os.path.join(result_path, file_name)
             print("File path: " + file_path)
 
+            # Kiểm tra nếu tệp đã tồn tại và thêm số vào tên tệp nếu cần
+            counter = 1
+            while os.path.exists(file_path):
+                file_name = "{}({}).h5".format(algo, counter)
+                file_path = os.path.join(result_path, file_name)
+                counter += 1
+
+            # Lưu kết quả vào tệp HDF5
             with h5py.File(file_path, 'w') as hf:
                 hf.create_dataset('rs_test_acc', data=self.rs_test_acc)
                 hf.create_dataset('rs_test_auc', data=self.rs_test_auc)
                 hf.create_dataset('rs_train_loss', data=self.rs_train_loss)
+            
+            print(f"Results saved to: {file_path}")
 
     def save_item(self, item, item_name):
         if not os.path.exists(self.save_folder_name):

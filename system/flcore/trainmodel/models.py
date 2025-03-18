@@ -5,7 +5,7 @@ import pennylane as qml
 import torch
 import torch.nn as nn
 import torch.jit
-batch_size = 10
+batch_size = 32
 
 
 # split an original model into a base and a head
@@ -23,62 +23,55 @@ class BaseHeadSplit(nn.Module):
         return out
 ### fed avg cnn
 class FedAvgCNN(nn.Module):
-    def __init__(self, in_features=1, num_classes=10, dim=1024):
+    def __init__(self, in_features=1, num_classes=10):
         super().__init__()
         self.num_classes = num_classes
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_features,
-                        32,
-                        kernel_size=5,
-                        padding=0,
-                        stride=1,
-                        bias=True),
-            nn.ReLU(inplace=True), 
+            nn.Conv2d(in_features, 32, kernel_size=3, padding=0, stride=1, bias=True),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=(2, 2))
         )
         self.conv2 = nn.Sequential(
-            nn.Conv2d(32,
-                        64,
-                        kernel_size=5,
-                        padding=0,
-                        stride=1,
-                        bias=True),
-            nn.ReLU(inplace=True), 
+            nn.Conv2d(32, 64, kernel_size=3, padding=0, stride=1, bias=True),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=(2, 2))
         )
-        self.flatten_dim = None  # Giá trị này sẽ được tính động
-        self.fc1 = nn.Identity()
-        self.fc = nn.Identity()
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc1 = nn.Sequential(
+            nn.Linear(64, 128), 
+            nn.ReLU(inplace=True)
+        )
+        self.fc2= nn.Sequential(
+            nn.Linear(128, 512), 
+            nn.ReLU(inplace=True)
+        )
+        self.fc = nn.Linear(512, self.num_classes)
 
     def forward(self, x):
-        out = self.conv1(x)
-        out = self.conv2(out)
-        out = torch.flatten(out, 1)
-        if self.flatten_dim is None:
-            self.flatten_dim = out.shape[1]
-            self.fc1 = nn.Sequential(
-                nn.Linear(self.flatten_dim, 512), 
-                nn.ReLU(inplace=True)
-            )
-            self.fc = nn.Linear(512, self.num_classes)
-            self.fc1.to(x.device)
-            self.fc.to(x.device)
-        
-        out = self.fc1(out)
-        out = self.fc(out)
-        return out
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.global_pool(x)  # [batch_size, 64, 1, 1]
+        x = x.view(x.size(0), -1)  # Flatten 
+        x = self.fc1(x)
+        x = self.fc2(x)
+        x = self.fc(x)
+        return x
 class FedAvgMLP(nn.Module):
-    def __init__(self, in_features=784, num_classes=10, hidden_dim=200):
+    def __init__(self, in_features=3072, num_classes=10, hidden_dim=512):
         super().__init__()
         self.fc1 = nn.Linear(in_features, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, num_classes)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc = nn.Linear(hidden_dim, num_classes)
         self.act = nn.ReLU(inplace=True)
-
+        
+        
     def forward(self, x):
-        if x.ndim == 4:
-            x = x.view(x.size(0), -1)
+        if x.ndim == 4:  
+            x = x.view(x.size(0), -1)  # Flatten nếu là hình ảnh
         x = self.act(self.fc1(x))
-        x = self.fc2(x)
+     
+        x = self.act(self.fc2(x))
+        x = self.fc(x)
         return x
 n_qubits = 8
 dev = qml.device("default.qubit", wires=n_qubits)

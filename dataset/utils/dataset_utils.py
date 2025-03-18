@@ -1,4 +1,5 @@
 
+
 import os
 import ujson
 import numpy as np
@@ -117,6 +118,7 @@ def separate_data(data, num_clients, num_classes, niid=False, balance=False, par
         n_nets -> num_clients, n_class -> num_classes
         '''
         C = class_per_client
+        C=8
         
         '''The first level: allocate labels to clients
         clientidx_map (dict, {label: clientidx}), e.g., C=2, num_clients=5, num_classes=10

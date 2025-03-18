@@ -128,7 +128,8 @@ class MemReporter():
         for device, tensors in self.device_mapping.items():
             tensor_stats = []
             for tensor in tensors:
-
+                if isinstance(tensor, torch.nn.parameter.UninitializedParameter):
+                    continue
                 if tensor.numel() == 0:
                     continue
                 stat = get_tensor_stat(tensor)  # (name, shape, numel, memory_size)

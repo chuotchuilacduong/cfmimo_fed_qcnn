@@ -13,7 +13,7 @@ class clientPer(Client):
         trainloader = self.load_train_data()
         
         start_time = time.time()
-
+        # self.load_client_model() 
         # self.model.to(self.device)
         self.model.train()
 
@@ -40,9 +40,10 @@ class clientPer(Client):
 
         if self.learning_rate_decay:
             self.learning_rate_scheduler.step()
-
+        
         self.train_time_cost['num_rounds'] += 1
         self.train_time_cost['total_cost'] += time.time() - start_time
+        self.save_client_model()
 
     def set_parameters(self, model):
         for new_param, old_param in zip(model.parameters(), self.model.base.parameters()):
