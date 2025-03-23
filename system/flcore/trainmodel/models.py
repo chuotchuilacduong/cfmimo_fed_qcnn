@@ -27,52 +27,55 @@ class FedAvgCNN(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_features, 32, kernel_size=3, padding=0, stride=1, bias=True),
+            nn.Conv2d(in_features, 32, kernel_size=5, padding=0, stride=1, bias=True),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=(2, 2))
         )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=3, padding=0, stride=1, bias=True),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(2, 2))
-        )
+        # self.conv2 = nn.Sequential(
+        #     nn.Conv2d(32, 64, kernel_size=5, padding=0, stride=1, bias=True),
+        #     nn.ReLU(inplace=True),
+        #     nn.MaxPool2d(kernel_size=(2, 2))
+        # )
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc1 = nn.Sequential(
-            nn.Linear(64, 128), 
+            nn.Linear(32, 128), 
             nn.ReLU(inplace=True)
         )
-        self.fc2= nn.Sequential(
-            nn.Linear(128, 512), 
-            nn.ReLU(inplace=True)
-        )
-        self.fc = nn.Linear(512, self.num_classes)
+        # self.fc2= nn.Sequential(
+        #     nn.Linear(128, 512), 
+        #     nn.ReLU(inplace=True)
+        # )
+        self.fc = nn.Linear(128, self.num_classes)
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.conv2(x)
+        # x = self.conv2(x)
         x = self.global_pool(x)  # [batch_size, 64, 1, 1]
         x = x.view(x.size(0), -1)  # Flatten 
         x = self.fc1(x)
-        x = self.fc2(x)
+        # x = self.fc2(x)
         x = self.fc(x)
         return x
 class FedAvgMLP(nn.Module):
     def __init__(self, in_features=3072, num_classes=10, hidden_dim=512):
         super().__init__()
         self.fc1 = nn.Linear(in_features, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        # self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc = nn.Linear(hidden_dim, num_classes)
         self.act = nn.ReLU(inplace=True)
-        
+        self.dropout = nn.Dropout(0.3)  # Giảm xuống 0.3 để tránh mất quá nhiều thông tin
         
     def forward(self, x):
-        if x.ndim == 4:  
-            x = x.view(x.size(0), -1)  # Flatten nếu là hình ảnh
+        if x.ndim == 4:
+            x = x.view(x.size(0), -1)  
         x = self.act(self.fc1(x))
-     
-        x = self.act(self.fc2(x))
+        
+        # x = self.act(self.fc2(x))
+        #x = self.dropout(x)  # Dropout sau fc2 trước khi vào lớp cuối cùng
+
         x = self.fc(x)
         return x
+# Define the quantum circuit QNode
 n_qubits = 8
 dev = qml.device("default.qubit", wires=n_qubits)
 def U_SU4(weights_0, weights_1, weights_2, weights_3, weights_4, weights_5, weights_6,
@@ -104,14 +107,44 @@ def qnode(inputs, weights_0, weights_1, weights_2, weights_3, weights_4, weights
 class HQCNN_Ang_noQP(nn.Module):
     def __init__(self, in_features, num_classes, weight_shapes):
         super(HQCNN_Ang_noQP, self).__init__()
-        self.classical_layer_1 = nn.Linear(in_features, n_qubits)
+        self.classical_layer_1 = nn.Linear(in_features, 512)
+        self.fc1= nn.Linear(512,n_qubits)
         self.quantum_layer = qml.qnn.TorchLayer(qnode, weight_shapes)
         self.fc = nn.Linear(n_qubits, num_classes)
     def forward(self, x):
         # Flatten input if not already
         if x.dim() > 2:
             x = x.view(x.size(0), -1)
+        
         x = self.classical_layer_1(x)  # Nhân input với weight của classical_layer_1
+        x= self.fc1(x)
+        x = self.quantum_layer(x)     # Qua quantum layer
+        x = self.fc(x) 
+        return x
+class HQCNN_CNN(nn.Module):
+    def __init__(self, in_features, num_classes, weight_shapes):
+        super(HQCNN_CNN, self).__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_features, 32, kernel_size=3, padding=0, stride=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(2, 2))
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, padding=0, stride=1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(2, 2))
+        )
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc1 = nn.Linear(64, n_qubits)
+        self.quantum_layer = qml.qnn.TorchLayer(qnode, weight_shapes)
+        self.fc = nn.Linear(n_qubits, num_classes)
+    def forward(self, x):
+        # Flatten input if not already
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.global_pool(x)  # [batch_size, 64, 1, 1]
+        x = x.view(x.size(0), -1)  # Flatten 
+        x= self.fc1(x) # resize cho quantum
         x = self.quantum_layer(x)     # Qua quantum layer
         x = self.fc(x) 
         return x

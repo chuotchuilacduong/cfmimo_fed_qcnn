@@ -43,7 +43,7 @@ class clientPer(Client):
         
         self.train_time_cost['num_rounds'] += 1
         self.train_time_cost['total_cost'] += time.time() - start_time
-        self.save_client_model()
+       # self.save_client_model()
 
     def set_parameters(self, model):
         for new_param, old_param in zip(model.parameters(), self.model.base.parameters()):

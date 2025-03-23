@@ -42,9 +42,9 @@ def run(args):
             if mimo == "True":
                 args.model = CNNModel(M, K, tau_p).to(args.device)
             else:
-                if "MNIST" or "EMNIST" or "FashionMNIST" in args.dataset:
+                if "MNIST" in args.dataset or "EMNIST" in args.dataset or "FashionMNIST" in args.dataset:
                     args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes).to(args.device)
-                elif "Cifar10" or "Cifar100" in args.dataset:
+                elif "Cifar10" in args.dataset or "Cifar100" in args.dataset:
                     args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes).to(args.device)
                 elif  "TinyImagenet" in args.dataset:
                     return FedAvgCNN(in_features=3, num_classes=args.num_classes).to(args.device)
@@ -54,9 +54,9 @@ def run(args):
             if mimo == "True":
                 args.model = MLPModel(M, K, tau_p,n_qubits).to(args.device)
             else:
-                if "MNIST" or "EMNIST" or "FashionMNIST" in args.dataset:
-                    args.model = FedAvgMLP( in_features= 784,num_classes=args.num_classes).to(args.device)
-                elif "Cifar10" or "Cifar100" in args.dataset:
+                if "MNIST" in args.dataset or "EMNIST" in args.dataset or "FashionMNIST" in args.dataset:
+                    args.model = FedAvgMLP( in_features= 1,num_classes=args.num_classes).to(args.device)
+                elif "Cifar10" in args.dataset or "Cifar100" in args.dataset:
                     args.model = FedAvgMLP(in_features= 3072 ,num_classes=args.num_classes).to(args.device)
                 elif "TinyImagenet" in args.dataset: 
                     args.model = FedAvgMLP(in_features= 12288 ,num_classes=args.num_classes).to(args.device)
@@ -77,8 +77,27 @@ def run(args):
                     args.model = HQCNN_Ang_noQP(in_features=28 * 28, num_classes=args.num_classes, weight_shapes=weight_shapes).to(args.device)
                 elif "Cifar10" in args.dataset:
                     args.model = HQCNN_Ang_noQP(in_features=3 * 32 * 32, num_classes=args.num_classes, weight_shapes=weight_shapes).to(args.device)
+        elif model_str == "HQCNN_CNN":
+            weight_shapes = {
+                    "weights_0": 3,
+                    "weights_1": 3,
+                    "weights_2": 1,
+                    "weights_3": 1,
+                    "weights_4": 1,
+                    "weights_5": 3,
+                    "weights_6": 3,
+                }
+            if mimo == "True":
+                args.model = HQCNN_CNN(M, K, tau_p, n_qubits).to(args.device)
+            else:
+                if "MNIST" in args.dataset:
+                    args.model = HQCNN_CNN(in_features=1, num_classes=args.num_classes, weight_shapes=weight_shapes).to(args.device)
+                elif "Cifar10" in args.dataset:
+                    args.model = HQCNN_CNN(in_features=3, num_classes=args.num_classes, weight_shapes=weight_shapes).to(args.device)
+        
         else:
             raise Exception("Model not found")
+        
         
         print(args.model)
         if args.algorithm == "FedAvg":
