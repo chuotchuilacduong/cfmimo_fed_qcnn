@@ -1,0 +1,66 @@
+import os
+import h5py
+import matplotlib.pyplot as plt
+
+# Đường dẫn đến các file .h5
+hqcnn_base_file = r"G:\BK\Quantum\cfmimo_fed_qcnn\results\Cifar10_FedPer_HQCNN_test_0.h5"
+hqcnn_cnnprep_file = r"G:\BK\Quantum\cfmimo_fed_qcnn\results\Cifar10_FedPer_HQCNN_test_0(1).h5"
+hqcnn_deep_file = r"G:\BK\Quantum\cfmimo_fed_qcnn\results\Cifar10_FedPer_HQCNN_test_0(2).h5"
+dataset_name = "Cifar10"  # Cập nhật lại nếu không phải MNIST
+
+# Hàm đọc dữ liệu từ file .h5
+def read_h5_data(file_path):
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    
+    with h5py.File(file_path, "r") as h5_file:
+        if "rs_test_acc" not in h5_file or "rs_train_loss" not in h5_file:
+            raise KeyError(f"Missing required datasets in {file_path}")
+        
+        rs_test_acc = h5_file["rs_test_acc"][:]
+        rs_train_loss = h5_file["rs_train_loss"][:]
+    
+    return rs_test_acc, rs_train_loss
+
+# Đọc dữ liệu từ 3 mô hình HQCNN
+try:
+    base_acc, base_loss = read_h5_data(hqcnn_base_file)
+    cnnprep_acc, cnnprep_loss = read_h5_data(hqcnn_cnnprep_file)
+    deep_acc, deep_loss = read_h5_data(hqcnn_deep_file)
+except (FileNotFoundError, KeyError) as e:
+    print(f"Error: {e}")
+    exit()
+
+# Số vòng (rounds) cho từng mô hình
+rounds_base = range(1, len(base_acc) + 1)
+rounds_cnnprep = range(1, len(cnnprep_acc) + 1)
+rounds_deep = range(1, len(deep_acc) + 1)
+
+# Vẽ biểu đồ so sánh
+plt.figure(figsize=(15, 5))
+
+# Biểu đồ 1: Test Accuracy
+plt.subplot(1, 2, 1)
+plt.plot(rounds_base, base_acc, marker='o', label='HQCNN (Base)', color='blue')
+plt.plot(rounds_cnnprep, cnnprep_acc, marker='s', label='HQCNN (CNN Preprocess)', color='green')
+plt.plot(rounds_deep, deep_acc, marker='^', label='HQCNN (Deep Circuit)', color='purple')
+plt.xlabel("Rounds")
+plt.ylabel("Accuracy")
+plt.title(f"Comparison of Test Accuracy on {dataset_name}")
+plt.grid(True)
+plt.legend()
+
+# Biểu đồ 2: Training Loss
+plt.subplot(1, 2, 2)
+plt.plot(rounds_base, base_loss, marker='o', label='HQCNN (Base)', color='red')
+plt.plot(rounds_cnnprep, cnnprep_loss, marker='s', label='HQCNN (CNN Preprocess)', color='orange')
+plt.plot(rounds_deep, deep_loss, marker='^', label='HQCNN (Deep Circuit)', color='brown')
+plt.xlabel("Rounds")
+plt.ylabel("Loss")
+plt.title(f"Comparison of Training Loss on {dataset_name}")
+plt.grid(True)
+plt.legend()
+
+# Hiển thị biểu đồ
+plt.tight_layout()
+plt.show()

@@ -6,6 +6,8 @@ import h5py
 import copy
 import time
 import random
+from flcore.trainmodel.models import HQCNN_Ang_noQP, HQCNN_CNN, Hybrid_QCNN, mimo_HQCNN_Ang_noQP # (Tên lớp có thể khác)
+
 from utils.data_utils import read_client_data
 from utils.dlg import DLG
 
@@ -150,40 +152,77 @@ class Server(object):
         for server_param, client_param in zip(self.global_model.parameters(), client_model.parameters()):
             server_param.data += client_param.data.clone() * w
 
-    def save_global_model(self): 
+    def save_global_model(self):
         model_path = os.path.join("models", self.dataset)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
 
         # Tạo tên file chứa thông tin thuật toán, model và dataset
-        model_filename = f"{self.algorithm}_{self.global_model.__class__.__name__}_{self.dataset}_server.pt"
+        # Sử dụng self.model_name đã được gán trong __init__
+        model_filename = f"{self.algorithm}_{self.model_name}_{self.dataset}_server.pt"
         model_path = os.path.join(model_path, model_filename)
 
-        # Kiểm tra xem model có Quantum Layer không
-        if hasattr(self.global_model, "quantum_layer"):
-            print(f"🔹 Lưu model {model_filename} dưới dạng state_dict() do có quantum_layer.")
+        # --- THAY ĐỔI LOGIC KIỂM TRA ---
+        # Kiểm tra xem model có phải là loại cần lưu state_dict hay không
+        # (Bao gồm các HQCNN cũ và Hybrid_QCNN mới)
+        # Cách 1: Kiểm tra sự tồn tại của các thuộc tính lượng tử cụ thể
+        # has_quantum = hasattr(self.global_model, "quantum_layer") or hasattr(self.global_model, "q_layer")
+        # Cách 2: Kiểm tra loại lớp (an toàn hơn nếu tên thuộc tính có thể thay đổi)
+        is_quantum_model = isinstance(self.global_model, (HQCNN_Ang_noQP, HQCNN_CNN, Hybrid_QCNN, mimo_HQCNN_Ang_noQP)) # Thêm các lớp model lượng tử của bạn vào đây
+
+        if is_quantum_model:
+            print(f"🔹 Lưu model {model_filename} dưới dạng state_dict() do có thành phần lượng tử.")
             torch.save(self.global_model.state_dict(), model_path)
         else:
-            print(f"🔹 Lưu toàn bộ model {model_filename}.")
-            torch.save(self.global_model, model_path)
+            # Lưu ý: Lưu toàn bộ model có thể không ổn định, cân nhắc luôn dùng state_dict
+            print(f"🔹 Lưu toàn bộ model {model_filename} (Model không có thành phần lượng tử được nhận diện).")
+            try:
+                torch.save(self.global_model, model_path)
+            except Exception as e:
+                print(f"⚠️ Lỗi khi lưu toàn bộ model, thử lưu state_dict: {e}")
+                torch.save(self.global_model.state_dict(), model_path)
+                print(f"🔹 Đã lưu model {model_filename} dưới dạng state_dict() thay thế.")
 
     def load_model(self):
         model_path = os.path.join("models", self.dataset)
-        
+
         # Xác định tên file theo định dạng đã lưu
-        model_filename = f"{self.algorithm}_{self.global_model.__class__.__name__}_{self.dataset}_server.pt"
+        # Sử dụng self.model_name
+        model_filename = f"{self.algorithm}_{self.model_name}_{self.dataset}_server.pt"
         model_path = os.path.join(model_path, model_filename)
 
         assert os.path.exists(model_path), f"⚠️ Model file {model_filename} không tồn tại!"
 
-        # Kiểm tra xem model có Quantum Layer không
-        if hasattr(self.global_model, "quantum_layer"):
-            print(f"🔹 Tải model {model_filename} từ state_dict().")
-            self.global_model.load_state_dict(torch.load(model_path))
-        else:
-            print(f"🔹 Tải toàn bộ model {model_filename}.")
-            self.global_model = torch.load(model_path)
+        # --- THAY ĐỔI LOGIC KIỂM TRA ---
+        # Tương tự như khi lưu, kiểm tra xem có phải model lượng tử không
+        is_quantum_model = isinstance(self.global_model, (HQCNN_Ang_noQP, HQCNN_CNN, Hybrid_QCNN, mimo_HQCNN_Ang_noQP)) # Cập nhật danh sách này nếu cần
 
+        # Cũng kiểm tra xem file lưu là state_dict hay toàn bộ model
+        # (Cách đơn giản là thử load state_dict trước)
+        try:
+            # Thử tải state_dict trước, cách này an toàn nhất
+            print(f"🔹 Thử tải model {model_filename} từ state_dict().")
+            state_dict = torch.load(model_path, map_location=self.device) # map_location để đảm bảo tải đúng device
+            self.global_model.load_state_dict(state_dict)
+            print(f"✅ Tải state_dict thành công cho model {model_filename}.")
+        except Exception as e_state_dict:
+            print(f"⚠️ Không tải được state_dict ({e_state_dict}), thử tải toàn bộ model...")
+            try:
+                 # Nếu không phải state_dict, thử tải toàn bộ model (ít khuyến khích hơn)
+                loaded_model = torch.load(model_path, map_location=self.device)
+                 # Cần đảm bảo cấu trúc lớp model khớp hoàn toàn
+                if isinstance(loaded_model, type(self.global_model)):
+                    self.global_model = loaded_model
+                    print(f"✅ Tải toàn bộ model thành công cho {model_filename}.")
+                else:
+                    # Nếu load được nhưng không phải là model object (có thể là state_dict từ lần lưu trước đó)
+                    print(f"⚠️ File đã tải không phải là đối tượng model đầy đủ, thử load_state_dict lại...")
+                    self.global_model.load_state_dict(loaded_model) # Thử load như state_dict
+                    print(f"✅ Tải state_dict thành công cho model {model_filename} (sau khi thử tải toàn bộ).")
+
+            except Exception as e_full_model:
+                print(f"❌ Lỗi nghiêm trọng: Không thể tải model {model_filename} bằng cả state_dict và load toàn bộ.")
+                raise e_full_model # Hoặc xử lý lỗi khác
     def model_exists(self):
         model_path = os.path.join("models", self.dataset)
         model_path = os.path.join(model_path, self.algorithm + "_server" + ".pt")

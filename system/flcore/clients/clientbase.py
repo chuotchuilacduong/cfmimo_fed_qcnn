@@ -164,39 +164,64 @@ class Client(object):
 
 
     def save_client_model(self):
-        model_path = os.path.join("models", self.dataset,self.model_name)
+        model_path = os.path.join("models", self.dataset, self.model_name)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
 
-        # Tạo tên file chứa thông tin client, thuật toán, model và dataset
+        # Tạo tên file
         model_filename = f"{self.algorithm}_{self.model.__class__.__name__}_{self.dataset}_client_{self.id}.pt"
         model_path = os.path.join(model_path, model_filename)
 
-        # Kiểm tra xem model có Quantum Layer không
-        if hasattr(self.model, "quantum_layer"):
-            #print(f"🔹 Lưu model {model_filename} dưới dạng state_dict() do có quantum_layer.")
+        # --- THAY ĐỔI LOGIC KIỂM TRA ---
+        # Ưu tiên lưu state_dict cho tất cả model để đảm bảo ổn định
+        # Hoặc kiểm tra như phía server nếu bạn muốn phân biệt rõ ràng
+        # is_quantum_model = isinstance(self.model, (HQCNN_Ang_noQP, HQCNN_CNN, Hybrid_QCNN, mimo_HQCNN_Ang_noQP)) # Cần import các lớp này
+
+        # Cách đơn giản và an toàn nhất là luôn dùng state_dict
+        try:
+            #print(f"🔹 Lưu state_dict model client {self.id}: {model_filename}")
             torch.save(self.model.state_dict(), model_path)
-        else:
-            #print(f"🔹 Lưu toàn bộ model {model_filename}.")
-            torch.save(self.model, model_path)
+        except Exception as e:
+            print(f"⚠️ Lỗi khi lưu state_dict cho client {self.id}: {e}")
+            # Có thể thử lưu cả model như một phương án dự phòng, nhưng ít khuyến khích
+            # print(f"🔹 Thử lưu toàn bộ model client {self.id}: {model_filename}")
+            # torch.save(self.model, model_path)
 
 
     def load_client_model(self):
-        model_path = os.path.join("models", self.dataset,self.model_name )
+        model_path = os.path.join("models", self.dataset, self.model_name)
 
-        # Xác định tên file theo định dạng đã lưu
+        # Xác định tên file
         model_filename = f"{self.algorithm}_{self.model.__class__.__name__}_{self.dataset}_client_{self.id}.pt"
         model_path = os.path.join(model_path, model_filename)
 
-        assert os.path.exists(model_path), f"⚠️ Model file {model_filename} không tồn tại!"
+        assert os.path.exists(model_path), f"⚠️ Model file client {model_filename} không tồn tại!"
 
-        # Kiểm tra xem model có Quantum Layer không
-        if hasattr(self.model, "quantum_layer"):
-            print(f"🔹 Tải model {model_filename} từ state_dict().")
-            self.model.load_state_dict(torch.load(model_path))
-        else:
-            print(f"🔹 Tải toàn bộ model {model_filename}.")
-            self.model = torch.load(model_path)
+        # --- THAY ĐỔI LOGIC KIỂM TRA ---
+        # Ưu tiên tải state_dict
+        try:
+            #print(f"🔹 Tải model client {self.id}: {model_filename} từ state_dict().")
+            # Cần tạo model cùng cấu trúc trước khi load state_dict
+            # self.model đã được khởi tạo trong __init__ bằng deepcopy, nên cấu trúc đã đúng
+            state_dict = torch.load(model_path, map_location=self.device)
+            self.model.load_state_dict(state_dict)
+            #print(f"✅ Tải state_dict thành công cho client {self.id}.")
+        except Exception as e_state_dict:
+            print(f"⚠️ Không tải được state_dict cho client {self.id} ({e_state_dict}), thử tải toàn bộ model...")
+            try:
+                 loaded_model = torch.load(model_path, map_location=self.device)
+                 # Kiểm tra xem có đúng lớp model không
+                 if isinstance(loaded_model, type(self.model)):
+                      self.model = loaded_model
+                      #print(f"✅ Tải toàn bộ model thành công cho client {self.id}.")
+                 else:
+                     # Có thể file lưu là state_dict từ lần trước
+                     #print(f"⚠️ File đã tải không phải là đối tượng model, thử load_state_dict...")
+                     self.model.load_state_dict(loaded_model)
+                     #print(f"✅ Tải state_dict thành công cho client {self.id} (sau khi thử tải toàn bộ).")
+            except Exception as e_full_model:
+                 print(f"❌ Lỗi nghiêm trọng: Không thể tải model client {self.id} {model_filename}")
+                 raise e_full_model
     def save_item(self, item, item_name, item_path=None):
         if item_path == None:
             item_path = self.save_folder_name
